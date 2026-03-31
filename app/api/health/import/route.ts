@@ -1,7 +1,11 @@
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { HealthMetric } from "@/lib/domain/types";
 import { upsertHealthMetrics } from "@/lib/db";
 import { jsonError, jsonOk, toErrorMessage } from "@/lib/utils/api";
 import { parseAppleHealthFile } from "@/lib/parsers/apple-health";
+import { detectAppleHealthFileKind } from "@/lib/parsers/apple-health/detect";
+import { parseAppleHealthXmlStream, parseAppleHealthZipBuffer } from "@/lib/parsers/apple-health/stream";
 
 export const runtime = "nodejs";
 
@@ -58,9 +62,41 @@ export async function POST(request: Request) {
         return jsonError(`Failed to fetch blob file (${sourceResponse.status}).`, 400);
       }
 
-      bytes = await sourceResponse.arrayBuffer();
       fileName = body.fileName || getFileNameFromUrl(body.blobUrl);
       mimeType = body.mimeType || sourceResponse.headers.get("content-type") || undefined;
+      const kind = detectAppleHealthFileKind(fileName, mimeType);
+
+      if (kind === "xml" && sourceResponse.body) {
+        const nodeStream = Readable.fromWeb(sourceResponse.body as unknown as NodeReadableStream<Uint8Array>);
+        const parsed = await parseAppleHealthXmlStream(nodeStream, "xml");
+        const persistence = await persistMetrics(parsed.metrics);
+
+        return jsonOk({
+          fileName,
+          sourceKind: parsed.sourceKind,
+          imported: parsed.metrics.length,
+          metricsCount: parsed.metrics.length,
+          workoutCount: 0,
+          warnings: parsed.warnings,
+          persistence
+        });
+      }
+
+      bytes = await sourceResponse.arrayBuffer();
+      if (kind === "zip") {
+        const parsed = await parseAppleHealthZipBuffer(bytes);
+        const persistence = await persistMetrics(parsed.metrics);
+
+        return jsonOk({
+          fileName,
+          sourceKind: parsed.sourceKind,
+          imported: parsed.metrics.length,
+          metricsCount: parsed.metrics.length,
+          workoutCount: 0,
+          warnings: parsed.warnings,
+          persistence
+        });
+      }
     } else {
       const formData = await request.formData();
       const uploaded = formData.get("file");
