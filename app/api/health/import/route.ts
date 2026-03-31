@@ -5,7 +5,7 @@ import { upsertHealthMetrics } from "@/lib/db";
 import { jsonError, jsonOk, toErrorMessage } from "@/lib/utils/api";
 import { parseAppleHealthFile } from "@/lib/parsers/apple-health";
 import { detectAppleHealthFileKind } from "@/lib/parsers/apple-health/detect";
-import { parseAppleHealthXmlStream, parseAppleHealthZipBuffer } from "@/lib/parsers/apple-health/stream";
+import { parseAppleHealthXmlStream } from "@/lib/parsers/apple-health/stream";
 
 export const runtime = "nodejs";
 
@@ -82,21 +82,11 @@ export async function POST(request: Request) {
         });
       }
 
-      bytes = await sourceResponse.arrayBuffer();
       if (kind === "zip") {
-        const parsed = await parseAppleHealthZipBuffer(bytes);
-        const persistence = await persistMetrics(parsed.metrics);
-
-        return jsonOk({
-          fileName,
-          sourceKind: parsed.sourceKind,
-          imported: parsed.metrics.length,
-          metricsCount: parsed.metrics.length,
-          workoutCount: 0,
-          warnings: parsed.warnings,
-          persistence
-        });
+        return jsonError("ZIP import via blob is disabled on server to avoid memory overflow. Extract export.xml on client and retry.", 400);
       }
+
+      bytes = await sourceResponse.arrayBuffer();
     } else {
       const formData = await request.formData();
       const uploaded = formData.get("file");

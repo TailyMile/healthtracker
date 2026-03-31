@@ -17,7 +17,7 @@ const AGGREGATES: Record<HealthMetric["type"], AggregateType | null> = {
   weight: null,
   body_fat_pct: null,
   heart_rate: "avg",
-  resting_hr: null,
+  resting_hr: "avg",
   steps: "sum",
   sleep_minutes: "sum",
   calories: "sum",
@@ -52,31 +52,62 @@ function foldAggregates(store: Map<string, { metric: HealthMetric; sum: number; 
   }));
 }
 
+function upsertLatestPerDay(store: Map<string, HealthMetric>, metric: HealthMetric) {
+  const day = metric.observedAt.slice(0, 10);
+  const key = `${metric.type}|${day}`;
+  const current = store.get(key);
+  if (!current || metric.observedAt > current.observedAt) {
+    store.set(key, metric);
+  }
+}
+
+function buildMetricsForStorage(params: {
+  latestStore: Map<string, HealthMetric>;
+  sumStore: Map<string, { metric: HealthMetric; sum: number; count: number }>;
+  avgStore: Map<string, { metric: HealthMetric; sum: number; count: number }>;
+}) {
+  const passthrough = [...params.latestStore.values()];
+  passthrough.sort((a, b) => a.observedAt.localeCompare(b.observedAt));
+
+  return [
+    ...passthrough,
+    ...foldAggregates(params.sumStore, "sum"),
+    ...foldAggregates(params.avgStore, "avg")
+  ];
+}
+
+function ingestMetric(
+  metric: HealthMetric,
+  stores: {
+    latestStore: Map<string, HealthMetric>;
+    sumStore: Map<string, { metric: HealthMetric; sum: number; count: number }>;
+    avgStore: Map<string, { metric: HealthMetric; sum: number; count: number }>;
+  }
+) {
+  const mode = AGGREGATES[metric.type];
+  if (!mode) {
+    upsertLatestPerDay(stores.latestStore, metric);
+    return;
+  }
+
+  if (mode === "sum") {
+    pushAggregatedMetric(stores.sumStore, metric, "sum");
+    return;
+  }
+
+  pushAggregatedMetric(stores.avgStore, metric, "avg");
+}
+
 function normalizeMetricsForStorage(metrics: HealthMetric[]) {
-  const passthrough: HealthMetric[] = [];
+  const latestStore = new Map<string, HealthMetric>();
   const sumStore = new Map<string, { metric: HealthMetric; sum: number; count: number }>();
   const avgStore = new Map<string, { metric: HealthMetric; sum: number; count: number }>();
 
   for (const metric of metrics) {
-    const mode = AGGREGATES[metric.type];
-    if (!mode) {
-      passthrough.push(metric);
-      continue;
-    }
-
-    if (mode === "sum") {
-      pushAggregatedMetric(sumStore, metric, "sum");
-      continue;
-    }
-
-    pushAggregatedMetric(avgStore, metric, "avg");
+    ingestMetric(metric, { latestStore, sumStore, avgStore });
   }
 
-  return [
-    ...passthrough,
-    ...foldAggregates(sumStore, "sum"),
-    ...foldAggregates(avgStore, "avg")
-  ];
+  return buildMetricsForStorage({ latestStore, sumStore, avgStore });
 }
 
 function asStringAttr(value: unknown) {
@@ -91,7 +122,9 @@ function asStringAttr(value: unknown) {
 export async function parseAppleHealthXmlStream(stream: Readable, sourceKind = "xml"): Promise<StreamParseResult> {
   const parser = sax.createStream(true, { trim: true, normalize: true });
   const warnings: string[] = [];
-  const parsedMetrics: HealthMetric[] = [];
+  const latestStore = new Map<string, HealthMetric>();
+  const sumStore = new Map<string, { metric: HealthMetric; sum: number; count: number }>();
+  const avgStore = new Map<string, { metric: HealthMetric; sum: number; count: number }>();
   let currentRecord: AppleHealthRecordLike | null = null;
   let recordsCount = 0;
 
@@ -129,8 +162,10 @@ export async function parseAppleHealthXmlStream(stream: Readable, sourceKind = "
 
     recordsCount += 1;
     const normalized = normalizeAppleHealthRecord(currentRecord);
-    if (normalized.length) {
-      parsedMetrics.push(...normalized);
+    if (normalized.length > 0) {
+      for (const metric of normalized) {
+        ingestMetric(metric, { latestStore, sumStore, avgStore });
+      }
     }
     currentRecord = null;
   });
@@ -151,7 +186,7 @@ export async function parseAppleHealthXmlStream(stream: Readable, sourceKind = "
   }
 
   return {
-    metrics: normalizeMetricsForStorage(parsedMetrics),
+    metrics: buildMetricsForStorage({ latestStore, sumStore, avgStore }),
     warnings,
     sourceKind
   };

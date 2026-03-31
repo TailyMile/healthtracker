@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { upload } from "@vercel/blob/client";
+import JSZip from "jszip";
 import { Button, SectionCard, StatusPill, EmptyState } from "@/components/ui";
 
 type ImportStatus = {
@@ -115,12 +116,46 @@ export function ImportClient() {
     await importByRequest(res);
   }
 
+  async function prepareFileForImport(fileToImport: File) {
+    const lowerName = fileToImport.name.toLowerCase();
+    if (!lowerName.endsWith(".zip")) {
+      return fileToImport;
+    }
+
+    setStatus("Распаковываю ZIP в браузере...");
+    const zipBytes = await fileToImport.arrayBuffer();
+    const zip = await JSZip.loadAsync(zipBytes);
+    const files = Object.values(zip.files)
+      .filter((entry) => !entry.dir)
+      .sort((left, right) => {
+        const leftName = left.name.toLowerCase();
+        const rightName = right.name.toLowerCase();
+        const score = (name: string) => (name.endsWith("export.xml") ? 0 : name.endsWith(".xml") ? 1 : 9);
+        return score(leftName) - score(rightName);
+      });
+
+    const xmlEntry = files.find((entry) => {
+      const name = entry.name.toLowerCase();
+      return name.endsWith("export.xml") || name.endsWith(".xml");
+    });
+
+    if (!xmlEntry) {
+      throw new Error("В ZIP не найден export.xml.");
+    }
+
+    const xmlBlob = await xmlEntry.async("blob");
+    const extractedName = xmlEntry.name.split("/").pop() || "export.xml";
+    return new File([xmlBlob], extractedName, { type: "application/xml" });
+  }
+
   async function uploadAppleHealth() {
     if (!file) return;
     setBusy(true);
-    setStatus("Загружаю файл в Blob...");
+    setStatus("Подготавливаю файл...");
     try {
-      await importViaBlob(file);
+      const prepared = await prepareFileForImport(file);
+      setStatus("Загружаю файл в Blob...");
+      await importViaBlob(prepared);
     } catch (error) {
       if (file.size <= DIRECT_UPLOAD_FALLBACK_BYTES) {
         try {
@@ -172,7 +207,7 @@ export function ImportClient() {
             />
             <span className="text-base font-semibold text-slate-950">{file ? file.name : "Выберите Apple Health XML/CSV/JSON/ZIP"}</span>
             <span className="mt-2 text-sm text-slate-500">Можно загрузить export из Health на iPhone или архив с export.xml</span>
-            <span className="mt-1 text-xs text-slate-500">Крупные файлы загружаются через Vercel Blob (подходит для больших ZIP).</span>
+            <span className="mt-1 text-xs text-slate-500">ZIP распаковывается в браузере и отправляется в Blob как XML для стабильного импорта больших архивов.</span>
           </label>
 
           <div className="flex flex-wrap gap-3">
