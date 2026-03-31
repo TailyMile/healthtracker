@@ -10,7 +10,7 @@ type GenerateBody = {
   endDate?: string;
 };
 
-function isDateInput(value: string | undefined) {
+function isDateInput(value: string | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
