@@ -64,6 +64,12 @@
 4. Сформируйте отчёт.
 5. Скачайте markdown или JSON, при необходимости отправьте в Google Drive.
 
+## Большие Apple Health архивы
+- Для крупных `Apple Health` файлов (например, `~140MB`) используется `client upload` в Vercel Blob:
+  1. браузер загружает файл напрямую в Blob (`/api/health/upload`);
+  2. backend импортирует данные по `blobUrl` (`/api/health/import`).
+- Это обходит лимит body для serverless-функций Vercel при прямом form upload.
+
 ## Пример отчёта
 - Примерные артефакты лежат в директории `examples/`:
   - `latest_chatgpt_report.example.md`

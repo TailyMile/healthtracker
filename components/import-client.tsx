@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { Button, SectionCard, StatusPill, EmptyState } from "@/components/ui";
 
 type ImportStatus = {
@@ -29,6 +30,26 @@ type ImportStatus = {
   error?: string;
 };
 
+type ApiEnvelope<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+};
+
+const DIRECT_UPLOAD_FALLBACK_BYTES = 4 * 1024 * 1024;
+
+async function readApiEnvelope<T>(res: Response): Promise<ApiEnvelope<T>> {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw) as ApiEnvelope<T>;
+  } catch {
+    if (raw.includes("Request Entity Too Large") || raw.includes("FUNCTION_PAYLOAD_TOO_LARGE")) {
+      throw new Error("Сервер отклонил payload из-за размера. Проверьте настройки upload и повторите попытку.");
+    }
+    throw new Error(`Сервер вернул не-JSON ответ (${res.status}).`);
+  }
+}
+
 export function ImportClient() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Готов к импорту");
@@ -52,20 +73,66 @@ export function ImportClient() {
     loadConnections().catch(() => undefined);
   }, []);
 
-  async function upload() {
+  async function importByRequest(res: Response) {
+    const json = await readApiEnvelope<{ imported?: number }>(res);
+    if (!json.ok) throw new Error(json.error || "import failed");
+    setResult({ imported: json.data?.imported ?? 0 });
+    setStatus(`Импорт завершён: ${json.data?.imported ?? 0} записей`);
+    await loadConnections();
+  }
+
+  async function importDirect(fileToImport: File) {
+    const form = new FormData();
+    form.append("file", fileToImport);
+    const res = await fetch("/api/health/import", { method: "POST", body: form });
+    await importByRequest(res);
+  }
+
+  async function importViaBlob(fileToImport: File) {
+    const safeFileName = fileToImport.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const pathname = `imports/apple-health/${Date.now()}-${safeFileName}`;
+    const blob = await upload(pathname, fileToImport, {
+      access: "public",
+      handleUploadUrl: "/api/health/upload",
+      multipart: true,
+      onUploadProgress(event) {
+        setStatus(`Загрузка файла: ${event.percentage}%`);
+      }
+    });
+
+    setStatus("Файл загружен. Импортирую Apple Health...");
+    const res = await fetch("/api/health/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        blobUrl: blob.url,
+        fileName: fileToImport.name,
+        mimeType: fileToImport.type || undefined
+      })
+    });
+    await importByRequest(res);
+  }
+
+  async function uploadAppleHealth() {
     if (!file) return;
     setBusy(true);
-    setStatus("Импортирую Apple Health...");
+    setStatus("Загружаю файл в Blob...");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/health/import", { method: "POST", body: form });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "import failed");
-      setResult({ imported: json.data.imported ?? 0 });
-      setStatus(`Импорт завершён: ${json.data.imported ?? 0} записей`);
-      await loadConnections();
+      await importViaBlob(file);
     } catch (error) {
+      if (file.size <= DIRECT_UPLOAD_FALLBACK_BYTES) {
+        try {
+          setStatus("Blob upload недоступен. Пробую прямой импорт...");
+          await importDirect(file);
+          return;
+        } catch (fallbackError) {
+          setStatus(fallbackError instanceof Error ? fallbackError.message : "Ошибка импорта");
+          return;
+        }
+      }
+
       setStatus(error instanceof Error ? error.message : "Ошибка импорта");
     } finally {
       setBusy(false);
@@ -81,9 +148,9 @@ export function ImportClient() {
     setStatus("Синхронизация Strava...");
     try {
       const res = await fetch("/api/strava/sync", { method: "POST" });
-      const json = await res.json();
+      const json = await readApiEnvelope<{ imported?: number }>(res);
       if (!json.ok) throw new Error(json.error || "sync failed");
-      setStatus(`Strava синхронизирован: ${json.data.imported ?? 0} активностей`);
+      setStatus(`Strava синхронизирован: ${json.data?.imported ?? 0} активностей`);
       await loadConnections();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Strava sync error");
@@ -105,10 +172,11 @@ export function ImportClient() {
             />
             <span className="text-base font-semibold text-slate-950">{file ? file.name : "Выберите Apple Health XML/CSV/JSON/ZIP"}</span>
             <span className="mt-2 text-sm text-slate-500">Можно загрузить export из Health на iPhone или архив с export.xml</span>
+            <span className="mt-1 text-xs text-slate-500">Крупные файлы загружаются через Vercel Blob (подходит для больших ZIP).</span>
           </label>
 
           <div className="flex flex-wrap gap-3">
-            <Button onClick={upload} disabled={!canSubmit} className="w-full sm:w-auto">Импортировать</Button>
+            <Button onClick={uploadAppleHealth} disabled={!canSubmit} className="w-full sm:w-auto">Импортировать</Button>
             <Button variant="secondary" onClick={syncStrava} disabled={busy || !stravaConnected} className="w-full sm:w-auto">
               Sync Strava
             </Button>

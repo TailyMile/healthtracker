@@ -5,26 +5,80 @@ import { parseAppleHealthFile } from "@/lib/parsers/apple-health";
 
 export const runtime = "nodejs";
 
+interface ImportByBlobBody {
+  blobUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
 async function persistMetrics(metrics: HealthMetric[]) {
   const result = await upsertHealthMetrics(metrics);
   return { attempted: true, persisted: result.inserted, note: "Metrics were stored in app state." };
 }
 
+function getFileNameFromUrl(blobUrl: string) {
+  try {
+    const pathname = new URL(blobUrl).pathname;
+    const parts = pathname.split("/");
+    const fileName = parts[parts.length - 1];
+    return fileName || "export.xml";
+  } catch {
+    return "export.xml";
+  }
+}
+
+function isAllowedBlobUrl(blobUrl: string) {
+  try {
+    const url = new URL(blobUrl);
+    return url.protocol === "https:" && url.hostname.endsWith(".blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const uploaded = formData.get("file");
+    const contentType = request.headers.get("content-type") ?? "";
+    let bytes: ArrayBuffer;
+    let fileName = "export.xml";
+    let mimeType: string | undefined;
 
-    if (!(uploaded instanceof File)) {
-      return jsonError("Upload a file field named 'file'.", 400);
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as ImportByBlobBody;
+      if (!body.blobUrl) {
+        return jsonError("Missing blobUrl in request body.", 400);
+      }
+
+      if (!isAllowedBlobUrl(body.blobUrl)) {
+        return jsonError("blobUrl must point to Vercel Blob public URL.", 400);
+      }
+
+      const sourceResponse = await fetch(body.blobUrl, { cache: "no-store" });
+      if (!sourceResponse.ok) {
+        return jsonError(`Failed to fetch blob file (${sourceResponse.status}).`, 400);
+      }
+
+      bytes = await sourceResponse.arrayBuffer();
+      fileName = body.fileName || getFileNameFromUrl(body.blobUrl);
+      mimeType = body.mimeType || sourceResponse.headers.get("content-type") || undefined;
+    } else {
+      const formData = await request.formData();
+      const uploaded = formData.get("file");
+
+      if (!(uploaded instanceof File)) {
+        return jsonError("Upload a file field named 'file' or pass JSON with blobUrl.", 400);
+      }
+
+      bytes = await uploaded.arrayBuffer();
+      fileName = uploaded.name;
+      mimeType = uploaded.type || undefined;
     }
 
-    const bytes = await uploaded.arrayBuffer();
-    const parsed = await parseAppleHealthFile(bytes, uploaded.name, uploaded.type || undefined);
+    const parsed = await parseAppleHealthFile(bytes, fileName, mimeType);
     const persistence = await persistMetrics(parsed.metrics);
 
     return jsonOk({
-      fileName: uploaded.name,
+      fileName,
       sourceKind: parsed.sourceKind,
       imported: parsed.metrics.length,
       metricsCount: parsed.metrics.length,
