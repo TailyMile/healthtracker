@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { HealthMetric } from "@/lib/domain/types";
-import { upsertHealthMetrics } from "@/lib/db";
+import { listHealthMetrics, upsertHealthMetrics } from "@/lib/db";
 import { jsonError, jsonOk, toErrorMessage } from "@/lib/utils/api";
 import { parseAppleHealthFile } from "@/lib/parsers/apple-health";
 import { detectAppleHealthFileKind } from "@/lib/parsers/apple-health/detect";
@@ -13,6 +13,63 @@ interface ImportByBlobBody {
   blobUrl?: string;
   fileName?: string;
   mimeType?: string;
+}
+
+type ImportMode = "initial_last_year" | "incremental_new_only";
+
+const APPLE_MINIMAL_TYPES: Array<HealthMetric["type"]> = [
+  "weight",
+  "body_fat_pct",
+  "resting_hr",
+  "sleep_minutes",
+  "steps",
+];
+
+function toIsoYearAgo(now = Date.now()) {
+  const yearAgo = new Date(now - 365 * 24 * 60 * 60 * 1000);
+  return yearAgo.toISOString();
+}
+
+function buildPolicy(existingMetrics: HealthMetric[]) {
+  const latestByType = new Map<HealthMetric["type"], string>();
+
+  for (const metric of existingMetrics) {
+    if (metric.source !== "apple_health") continue;
+    if (!APPLE_MINIMAL_TYPES.includes(metric.type)) continue;
+    const current = latestByType.get(metric.type);
+    if (!current || metric.observedAt > current) {
+      latestByType.set(metric.type, metric.observedAt);
+    }
+  }
+
+  const hasAnyAppleMinimal = latestByType.size > 0;
+  const mode: ImportMode = hasAnyAppleMinimal ? "incremental_new_only" : "initial_last_year";
+  const initialFrom = toIsoYearAgo();
+
+  return {
+    mode,
+    initialFrom,
+    latestByType,
+  };
+}
+
+function shouldImportMetric(metric: HealthMetric, policy: ReturnType<typeof buildPolicy>) {
+  if (metric.source !== "apple_health") {
+    return false;
+  }
+  if (!APPLE_MINIMAL_TYPES.includes(metric.type)) {
+    return false;
+  }
+
+  if (policy.mode === "initial_last_year") {
+    return metric.observedAt >= policy.initialFrom;
+  }
+
+  const latest = policy.latestByType.get(metric.type);
+  if (!latest) {
+    return true;
+  }
+  return metric.observedAt > latest;
 }
 
 async function persistMetrics(metrics: HealthMetric[]) {
@@ -42,6 +99,9 @@ function isAllowedBlobUrl(blobUrl: string) {
 
 export async function POST(request: Request) {
   try {
+    const existingMetrics = await listHealthMetrics();
+    const policy = buildPolicy(existingMetrics);
+
     const contentType = request.headers.get("content-type") ?? "";
     let bytes: ArrayBuffer;
     let fileName = "export.xml";
@@ -68,12 +128,17 @@ export async function POST(request: Request) {
 
       if (kind === "xml" && sourceResponse.body) {
         const nodeStream = Readable.fromWeb(sourceResponse.body as unknown as NodeReadableStream<Uint8Array>);
-        const parsed = await parseAppleHealthXmlStream(nodeStream, "xml");
+        const parsed = await parseAppleHealthXmlStream(nodeStream, "xml", {
+          metricFilter: (metric) => shouldImportMetric(metric, policy)
+        });
         const persistence = await persistMetrics(parsed.metrics);
 
         return jsonOk({
           fileName,
           sourceKind: parsed.sourceKind,
+          importMode: policy.mode,
+          appliedTypes: APPLE_MINIMAL_TYPES,
+          windowStart: policy.mode === "initial_last_year" ? policy.initialFrom : undefined,
           imported: parsed.metrics.length,
           metricsCount: parsed.metrics.length,
           workoutCount: 0,
@@ -101,13 +166,17 @@ export async function POST(request: Request) {
     }
 
     const parsed = await parseAppleHealthFile(bytes, fileName, mimeType);
-    const persistence = await persistMetrics(parsed.metrics);
+    const filteredMetrics = parsed.metrics.filter((metric) => shouldImportMetric(metric, policy));
+    const persistence = await persistMetrics(filteredMetrics);
 
     return jsonOk({
       fileName,
       sourceKind: parsed.sourceKind,
-      imported: parsed.metrics.length,
-      metricsCount: parsed.metrics.length,
+      importMode: policy.mode,
+      appliedTypes: APPLE_MINIMAL_TYPES,
+      windowStart: policy.mode === "initial_last_year" ? policy.initialFrom : undefined,
+      imported: filteredMetrics.length,
+      metricsCount: filteredMetrics.length,
       workoutCount: parsed.workouts.length,
       warnings: parsed.warnings,
       persistence

@@ -75,10 +75,19 @@ export function ImportClient() {
   }, []);
 
   async function importByRequest(res: Response) {
-    const json = await readApiEnvelope<{ imported?: number }>(res);
+    const json = await readApiEnvelope<{
+      imported?: number;
+      importMode?: "initial_last_year" | "incremental_new_only";
+      windowStart?: string;
+    }>(res);
     if (!json.ok) throw new Error(json.error || "import failed");
     setResult({ imported: json.data?.imported ?? 0 });
-    setStatus(`Импорт завершён: ${json.data?.imported ?? 0} записей`);
+    if (json.data?.importMode === "initial_last_year") {
+      const from = json.data.windowStart ? new Date(json.data.windowStart).toLocaleDateString("ru-RU") : "за последний год";
+      setStatus(`Импорт завершён: ${json.data?.imported ?? 0} записей (первичная база, начиная с ${from})`);
+    } else {
+      setStatus(`Импорт завершён: ${json.data?.imported ?? 0} новых записей`);
+    }
     await loadConnections();
   }
 

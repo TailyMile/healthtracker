@@ -11,6 +11,10 @@ interface StreamParseResult {
   sourceKind: string;
 }
 
+interface StreamParseOptions {
+  metricFilter?: (metric: HealthMetric) => boolean;
+}
+
 type AggregateType = "sum" | "avg";
 
 const AGGREGATES: Record<HealthMetric["type"], AggregateType | null> = {
@@ -119,7 +123,11 @@ function asStringAttr(value: unknown) {
   return undefined;
 }
 
-export async function parseAppleHealthXmlStream(stream: Readable, sourceKind = "xml"): Promise<StreamParseResult> {
+export async function parseAppleHealthXmlStream(
+  stream: Readable,
+  sourceKind = "xml",
+  options?: StreamParseOptions
+): Promise<StreamParseResult> {
   const parser = sax.createStream(true, { trim: true, normalize: true });
   const warnings: string[] = [];
   const latestStore = new Map<string, HealthMetric>();
@@ -164,6 +172,9 @@ export async function parseAppleHealthXmlStream(stream: Readable, sourceKind = "
     const normalized = normalizeAppleHealthRecord(currentRecord);
     if (normalized.length > 0) {
       for (const metric of normalized) {
+        if (options?.metricFilter && !options.metricFilter(metric)) {
+          continue;
+        }
         ingestMetric(metric, { latestStore, sumStore, avgStore });
       }
     }
