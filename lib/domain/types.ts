@@ -78,10 +78,21 @@ export interface ReportSummary {
   }>;
 }
 
+export type ReportPreset = "day" | "week" | "month" | "year" | "custom";
+
+export interface ReportRange {
+  preset: ReportPreset;
+  start: string;
+  end: string;
+  label: string;
+}
+
 export interface ReportBundle {
   daily: ReportSummary;
   weekly: ReportSummary;
   monthly: ReportSummary;
+  selected?: ReportSummary;
+  selectedRange?: ReportRange;
   latestMarkdown: string;
   generatedAt: string;
 }

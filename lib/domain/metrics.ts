@@ -1,4 +1,4 @@
-import { compareDesc, parseISO, startOfDay, subDays } from "date-fns";
+import { compareDesc, differenceInCalendarDays, parseISO, startOfDay, subDays } from "date-fns";
 import type { ActivityTotals, HealthMetric, RecoverySnapshot, ReportSummary, Workout } from "@/lib/domain/types";
 
 function toDate(value: string | Date) {
@@ -156,16 +156,48 @@ export function buildSummary(params: {
     return inRange(startedAt, start, end);
   });
 
+  return buildSummaryForRange({
+    title,
+    period,
+    generatedAt,
+    workouts,
+    metrics,
+    start,
+    end,
+    ridesLimit,
+    scopedWorkouts: summaryWorkouts
+  });
+}
+
+export function buildSummaryForRange(params: {
+  title: string;
+  period: string;
+  generatedAt: string;
+  workouts: Workout[];
+  metrics: HealthMetric[];
+  start: Date;
+  end: Date;
+  ridesLimit?: number;
+  scopedWorkouts?: Workout[];
+}): ReportSummary {
+  const { title, period, generatedAt, workouts, metrics, start, end, ridesLimit = 5, scopedWorkouts } = params;
+  const summaryWorkouts = workouts.filter((workout) => {
+    const startedAt = toDate(workout.startedAt);
+    return inRange(startedAt, start, end);
+  });
+  const effectiveWorkouts = scopedWorkouts ?? summaryWorkouts;
+  const windowDays = Math.max(1, differenceInCalendarDays(end, start));
+
   return {
     title,
     period,
     generatedAt,
-    totals: calculateActivityTotals(summaryWorkouts),
+    totals: calculateActivityTotals(effectiveWorkouts),
     currentWeightKg: getLatestWeight(metrics),
     weightDeltaKg: getWeightDelta(metrics, new Date(generatedAt), windowDays),
     recovery: calculateRecoverySnapshot(metrics, new Date(generatedAt)),
     flags: detectFlags(workouts, metrics, new Date(generatedAt), windowDays),
-    latestRides: selectLatestRides(summaryWorkouts, ridesLimit)
+    latestRides: selectLatestRides(effectiveWorkouts, ridesLimit)
   };
 }
 

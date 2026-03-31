@@ -1,5 +1,6 @@
-import type { HealthMetric, ReportBundle, ReportSummary, Workout } from "@/lib/domain/types";
-import { buildSummary, calculateActivityTotals, formatNumber, selectLatestRides } from "@/lib/domain/metrics";
+import { parseISO } from "date-fns";
+import type { HealthMetric, ReportBundle, ReportRange, ReportSummary, Workout } from "@/lib/domain/types";
+import { buildSummary, buildSummaryForRange, calculateActivityTotals, formatNumber, selectLatestRides } from "@/lib/domain/metrics";
 
 function section(title: string, lines: string[]) {
   return [`## ${title}`, ...lines].join("\n");
@@ -31,7 +32,17 @@ function renderRides(summary: ReportSummary) {
   });
 }
 
-export function buildReportBundle(workouts: Workout[], metrics: HealthMetric[], generatedAt = new Date().toISOString()): ReportBundle {
+function safeDate(value: string, fallback: Date) {
+  const parsed = parseISO(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+export function buildReportBundle(
+  workouts: Workout[],
+  metrics: HealthMetric[],
+  generatedAt = new Date().toISOString(),
+  selectedRange?: ReportRange
+): ReportBundle {
   const daily = buildSummary({
     title: "Ежедневная сводка",
     period: "последние 24 часа",
@@ -59,11 +70,44 @@ export function buildReportBundle(workouts: Workout[], metrics: HealthMetric[], 
     windowDays: 30
   });
 
+  const defaultStart = new Date(Date.parse(generatedAt) - 7 * 24 * 60 * 60 * 1000);
+  const fallbackSelectedRange: ReportRange = {
+    preset: "week",
+    start: defaultStart.toISOString(),
+    end: generatedAt,
+    label: "последние 7 дней"
+  };
+  const effectiveRange = selectedRange ?? fallbackSelectedRange;
+  const selectedStart = safeDate(effectiveRange.start, defaultStart);
+  const selectedEnd = safeDate(effectiveRange.end, new Date(generatedAt));
+  const selected = selectedStart < selectedEnd
+    ? buildSummaryForRange({
+        title: "Сводка выбранного диапазона",
+        period: effectiveRange.label,
+        generatedAt,
+        workouts,
+        metrics,
+        start: selectedStart,
+        end: selectedEnd,
+        ridesLimit: 10
+      })
+    : weekly;
+  const selectedRangeMeta: ReportRange = selectedStart < selectedEnd
+    ? {
+        preset: effectiveRange.preset,
+        start: selectedStart.toISOString(),
+        end: selectedEnd.toISOString(),
+        label: effectiveRange.label
+      }
+    : fallbackSelectedRange;
+
   const jsonBlock = {
     generatedAt,
     daily,
     weekly,
     monthly,
+    selected,
+    selectedRange: selectedRangeMeta,
     latestRides: selectLatestRides(workouts, 10),
     totals: calculateActivityTotals(workouts)
   };
@@ -72,27 +116,28 @@ export function buildReportBundle(workouts: Workout[], metrics: HealthMetric[], 
     `# Отчет по активности`,
     `Сформирован: ${generatedAt}`,
     "",
-    section("Сводка", renderSummaryLines(weekly)),
+    section("Сводка", renderSummaryLines(selected)),
     "",
-    section("Поездки", renderRides(weekly)),
+    section("Поездки", renderRides(selected)),
     "",
     section("Нагрузка", [
+      `- Выбранный диапазон (${selectedRangeMeta.label}): ${formatNumber(selected.totals.totalDistanceKm, 1)} км, ${formatNumber(selected.totals.totalMovingHours, 1)} ч`,
       `- Неделя: ${formatNumber(weekly.totals.totalDistanceKm, 1)} км, ${formatNumber(weekly.totals.totalMovingHours, 1)} ч`,
       `- Месяц: ${formatNumber(monthly.totals.totalDistanceKm, 1)} км, ${formatNumber(monthly.totals.totalMovingHours, 1)} ч`
     ]),
     "",
     section("Восстановление", [
-      `- Сон за 7 дней: ${formatNumber(weekly.recovery.avgSleepMinutes7d, 0)} мин`,
-      `- Resting HR за 7 дней: ${formatNumber(weekly.recovery.avgRestingHr7d, 0)}`,
-      `- Базовый resting HR за 28 дней: ${formatNumber(weekly.recovery.baselineRestingHr28d, 0)}`
+      `- Сон за 7 дней: ${formatNumber(selected.recovery.avgSleepMinutes7d, 0)} мин`,
+      `- Resting HR за 7 дней: ${formatNumber(selected.recovery.avgRestingHr7d, 0)}`,
+      `- Базовый resting HR за 28 дней: ${formatNumber(selected.recovery.baselineRestingHr28d, 0)}`
     ]),
     "",
     section("Вес", [
-      `- Текущий вес: ${formatNumber(weekly.currentWeightKg, 1)} кг`,
-      `- Дельта за 7 дней: ${formatNumber(weekly.weightDeltaKg, 1)} кг`
+      `- Текущий вес: ${formatNumber(selected.currentWeightKg, 1)} кг`,
+      `- Дельта за период: ${formatNumber(selected.weightDeltaKg, 1)} кг`
     ]),
     "",
-    section("Флаги", weekly.flags.length ? weekly.flags.map((flag) => `- ${flag}`) : ["- Нет тревожных флагов"]),
+    section("Флаги", selected.flags.length ? selected.flags.map((flag) => `- ${flag}`) : ["- Нет тревожных флагов"]),
     "",
     "## JSON",
     "```json",
@@ -104,6 +149,8 @@ export function buildReportBundle(workouts: Workout[], metrics: HealthMetric[], 
     daily,
     weekly,
     monthly,
+    selected,
+    selectedRange: selectedRangeMeta,
     latestMarkdown,
     generatedAt
   };

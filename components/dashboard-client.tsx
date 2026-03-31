@@ -69,7 +69,7 @@ export function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Тренировок" value={loading ? "—" : String(data.workouts)} hint="Синхронизировано из Strava" />
         <StatCard label="Объём" value={loading ? "—" : `${data.totalDistanceKm.toFixed(1)} км`} hint="Сумма по всем активностям" />
         <StatCard label="Время" value={loading ? "—" : formatTime(data.totalMovingHours)} hint="В движении" />
@@ -82,7 +82,24 @@ export function DashboardClient() {
           <StatusPill status={state.ok ? "Сводка готова" : state.error ?? "Пока нет данных"} />
         </div>
         {recent.length ? (
-          <div className="overflow-hidden rounded-[1.25rem] border border-slate-200">
+          <>
+            <div className="space-y-3 md:hidden">
+              {recent.map((ride) => (
+                <article key={`${ride.date}-${ride.name}`} className="rounded-[1.1rem] border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    {new Date(ride.date).toLocaleString("ru-RU")}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-950">{ride.name}</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
+                    <div>{ride.distanceKm.toFixed(1)} км</div>
+                    <div>{ride.movingTimeMin.toFixed(0)} мин</div>
+                    <div>{ride.elevationM.toFixed(0)} м</div>
+                    <div>{ride.avgHr ? `${ride.avgHr.toFixed(0)} bpm` : "—"}</div>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-hidden rounded-[1.25rem] border border-slate-200 md:block">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
@@ -97,7 +114,7 @@ export function DashboardClient() {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {recent.map((ride) => (
                   <tr key={`${ride.date}-${ride.name}`}>
-                    <td className="px-4 py-3 text-slate-600">{ride.date}</td>
+                    <td className="px-4 py-3 text-slate-600">{new Date(ride.date).toLocaleString("ru-RU")}</td>
                     <td className="px-4 py-3 font-medium text-slate-950">{ride.name}</td>
                     <td className="px-4 py-3 text-slate-600">{ride.distanceKm.toFixed(1)} км</td>
                     <td className="px-4 py-3 text-slate-600">{ride.movingTimeMin.toFixed(0)} мин</td>
@@ -108,6 +125,7 @@ export function DashboardClient() {
               </tbody>
             </table>
           </div>
+          </>
         ) : (
           <EmptyState
             title="Пока нет поездок"

@@ -1,4 +1,4 @@
-import type { HealthMetric, ReportBundle, Workout } from "@/lib/domain/types";
+import type { HealthMetric, ReportBundle, ReportRange, Workout } from "@/lib/domain/types";
 import { calculateActivityTotals, getLatestWeight, selectLatestRides } from "@/lib/domain/metrics";
 import {
   getAllWorkoutsAndMetrics,
@@ -16,9 +16,13 @@ export interface DashboardSummary {
   reportCount: number;
 }
 
-export async function generateReportBundleFromDb() {
+export interface GenerateReportOptions {
+  selectedRange?: ReportRange;
+}
+
+export async function generateReportBundleFromDb(options?: GenerateReportOptions) {
   const { workouts, metrics } = await getAllWorkoutsAndMetrics();
-  return buildReportBundle(workouts, metrics);
+  return buildReportBundle(workouts, metrics, new Date().toISOString(), options?.selectedRange);
 }
 
 export async function persistReportBundle(bundle: ReportBundle) {
@@ -29,8 +33,8 @@ export async function persistReportBundle(bundle: ReportBundle) {
   return bundle;
 }
 
-export async function generateAndSaveReportBundle() {
-  const bundle = await generateReportBundleFromDb();
+export async function generateAndSaveReportBundle(options?: GenerateReportOptions) {
+  const bundle = await generateReportBundleFromDb(options);
   await persistReportBundle(bundle);
   return bundle;
 }

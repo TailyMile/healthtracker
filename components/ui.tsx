@@ -49,9 +49,9 @@ export function SectionCard({
 
 export function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="text-sm font-medium text-slate-500">{label}</div>
-      <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</div>
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{value}</div>
       {hint ? <div className="mt-2 text-sm text-slate-500">{hint}</div> : null}
     </div>
   );
@@ -111,7 +111,7 @@ export function StatusPill({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   const tone = normalized.includes("ok") || normalized.includes("готов") || normalized.includes("усп")
     ? "emerald"
-    : normalized.includes("warn") || normalized.includes("ожид")
+    : normalized.includes("warn") || normalized.includes("ожид") || normalized.includes("не подключ")
       ? "amber"
       : "sky";
 

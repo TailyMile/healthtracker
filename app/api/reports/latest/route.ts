@@ -15,6 +15,8 @@ export async function GET() {
       daily: bundle.daily,
       weekly: bundle.weekly,
       monthly: bundle.monthly,
+      selected: bundle.selected,
+      selectedRange: bundle.selectedRange,
       latestMarkdown: bundle.latestMarkdown,
       markdown: bundle.latestMarkdown,
       bundle
