@@ -1,0 +1,29 @@
+{
+  "title": "Ежедневная сводка",
+  "period": "последние 24 часа",
+  "generatedAt": "2026-03-31T10:00:00.000Z",
+  "totals": {
+    "workouts": 1,
+    "totalDistanceKm": 18.4,
+    "totalMovingHours": 1.1,
+    "totalElevationM": 152
+  },
+  "currentWeightKg": 84.7,
+  "weightDeltaKg": -0.2,
+  "recovery": {
+    "avgSleepMinutes7d": 434,
+    "avgRestingHr7d": 58,
+    "baselineRestingHr28d": 56
+  },
+  "flags": [],
+  "latestRides": [
+    {
+      "date": "2026-03-31T06:20:00.000Z",
+      "name": "Morning Ride",
+      "distanceKm": 18.4,
+      "movingTimeMin": 67,
+      "elevationM": 152,
+      "avgHr": 143
+    }
+  ]
+}

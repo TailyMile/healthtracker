@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+  <Record type="HKQuantityTypeIdentifierBodyMass" sourceName="iPhone" unit="kg" value="85.2" startDate="2026-03-01 08:00:00 +0300" endDate="2026-03-01 08:00:00 +0300" />
+  <Record type="HKQuantityTypeIdentifierBodyFatPercentage" sourceName="iPhone" unit="%" value="18.4" startDate="2026-03-01 08:00:00 +0300" endDate="2026-03-01 08:00:00 +0300" />
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="Watch" unit="count/min" value="126" startDate="2026-03-02 18:10:00 +0300" endDate="2026-03-02 18:10:00 +0300" />
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="Watch" unit="count/min" value="58" startDate="2026-03-02 07:30:00 +0300" endDate="2026-03-02 07:30:00 +0300" />
+  <Record type="HKQuantityTypeIdentifierStepCount" sourceName="Watch" unit="count" value="10432" startDate="2026-03-02 23:59:59 +0300" endDate="2026-03-02 23:59:59 +0300" />
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="Watch" value="HKCategoryValueSleepAnalysisAsleep" startDate="2026-03-01 23:30:00 +0300" endDate="2026-03-02 07:00:00 +0300" />
+  <Record type="HKQuantityTypeIdentifierActiveEnergyBurned" sourceName="Watch" unit="kcal" value="742" startDate="2026-03-02 18:00:00 +0300" endDate="2026-03-02 19:15:00 +0300" />
+</HealthData>

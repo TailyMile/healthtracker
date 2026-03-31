@@ -1,0 +1,20 @@
+{
+  "title": "Месячная сводка",
+  "period": "последние 30 дней",
+  "generatedAt": "2026-03-31T10:00:00.000Z",
+  "totals": {
+    "workouts": 13,
+    "totalDistanceKm": 268.3,
+    "totalMovingHours": 15.2,
+    "totalElevationM": 2648
+  },
+  "currentWeightKg": 84.7,
+  "weightDeltaKg": -1.4,
+  "recovery": {
+    "avgSleepMinutes7d": 434,
+    "avgRestingHr7d": 58,
+    "baselineRestingHr28d": 56
+  },
+  "flags": [],
+  "latestRides": []
+}

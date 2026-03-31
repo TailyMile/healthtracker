@@ -1,0 +1,3 @@
+type,value,unit,startDate,endDate,sourceName,device
+HKQuantityTypeIdentifierWeight,85.2,kg,2026-03-01 08:00:00 +0300,2026-03-01 08:00:00 +0300,iPhone,
+HKQuantityTypeIdentifierStepCount,10432,count,2026-03-02 23:59:59 +0300,2026-03-02 23:59:59 +0300,Watch,

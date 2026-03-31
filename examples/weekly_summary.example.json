@@ -1,0 +1,20 @@
+{
+  "title": "Еженедельная сводка",
+  "period": "последние 7 дней",
+  "generatedAt": "2026-03-31T10:00:00.000Z",
+  "totals": {
+    "workouts": 4,
+    "totalDistanceKm": 84.9,
+    "totalMovingHours": 4.9,
+    "totalElevationM": 731
+  },
+  "currentWeightKg": 84.7,
+  "weightDeltaKg": -0.6,
+  "recovery": {
+    "avgSleepMinutes7d": 434,
+    "avgRestingHr7d": 58,
+    "baselineRestingHr28d": 56
+  },
+  "flags": ["recovery_risk"],
+  "latestRides": []
+}
